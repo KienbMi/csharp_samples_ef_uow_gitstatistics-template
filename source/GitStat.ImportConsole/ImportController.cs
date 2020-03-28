@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using GitStat.Core.Entities;
+using GitStat.ImportConsole.ParserUtils;
 using Utils;
 
 namespace GitStat.ImportConsole
@@ -22,116 +23,51 @@ namespace GitStat.ImportConsole
             List<Commit> commits = new List<Commit>();
             Dictionary<string, Developer> developers = new Dictionary<string, Developer>();
 
-
             if (File.Exists(filePath) == false)
             {
                 throw new Exception("File does not exist");
             }
 
             string[] lines = File.ReadAllLines(filePath);
-            bool headerFound = false;
-            int year = 0, month = 0, day = 0;
-            string developerName = string.Empty;
-            string hashCode = string.Empty;
-            string message = string.Empty;
+            HeaderDto headerDto = null;
+            FooterDto footerDto = null;
 
             foreach (string line in lines)
             {
                 string[] data = line.Split(',');
-                if (data.Length >= 4)
-                {
-                    string[] dateString = data[2].Split('-');
-                    if (dateString.Length == 3
-                        && int.TryParse(dateString[0], out year)
-                        && int.TryParse(dateString[1], out month)
-                        && int.TryParse(dateString[2], out day))
-                    {
-                        headerFound = true;
 
-                        hashCode = data[0];
-                        developerName = data[1];
-                        for (int i = 3; i < data.Length; i++)
+                headerDto = MyParser.TryParseCommitHeader(line);
+                if (headerDto != null)
+                {
+                    Developer developer;
+                    if (developers.TryGetValue(headerDto.DeveloperName, out developer) == false)
+                    {
+                        developer = new Developer
                         {
-                            if (i == 3)
-                            {
-                                message = data[i];
-                            }
-                            else
-                            {
-                                message += $",{data[i]}";
-                            }
-                        }
+                            Name = headerDto.DeveloperName
+                        };
+                        developers[headerDto.DeveloperName] = developer;
                     }
+
+                    commits.Add(new Commit
+                    {
+                        HashCode = headerDto.HashCode,
+                        Developer = developer,
+                        Date = headerDto.CommitDate,
+                        Message = headerDto.Message,
+                        FilesChanges = 0,
+                        Insertions = 0,
+                        Deletions = 0
+                    });
                 }
 
-                if (line.Contains("file"))
+                footerDto = MyParser.TryParseCommitFooter(line);
+                if (footerDto != null && commits.Count > 0)
                 {
-                    if (headerFound)
-                    {
-                        bool footerIsValid = true;
-                        int changes = 0, insertions = 0, deletions = 0;
-                        for (int i = 0; i < data.Length && footerIsValid; i++)
-                        {
-                            string[] footerPart = data[i].Split(' ');
-                            if (footerPart.Length < 2)
-                            {
-                                footerIsValid = false;
-                            }
-
-                            if (footerIsValid)
-                            {
-                                switch (i)
-                                {
-                                    case 0:
-                                        {
-                                            footerIsValid = int.TryParse(footerPart[1], out changes);
-                                            if (footerPart[2].Contains("file") == false)
-                                            {
-                                                footerIsValid = false;
-                                            }
-                                            break;
-                                        }
-                                    case 1:
-                                    case 2:
-                                        {
-                                            if (footerPart[2].Contains("insertion"))
-                                            {
-                                                footerIsValid = int.TryParse(footerPart[1], out insertions);
-                                            }
-                                            else if (footerPart[2].Contains("deletions"))
-                                            {
-                                                footerIsValid = int.TryParse(footerPart[1], out deletions);
-                                            }
-                                            break;
-                                        }
-                                }
-                            }
-                        }
-                        if (footerIsValid)
-                        {
-                            Developer developer;
-                            if (developers.TryGetValue(developerName, out developer) == false)
-                            {
-                                developer = new Developer
-                                {
-                                    Name = developerName
-                                };
-                                developers[developerName] = developer;
-                            }
-
-                            commits.Add(new Commit
-                            {
-                                HashCode = hashCode,
-                                Developer = developer,
-                                Date = new DateTime(year, month, day),
-                                Message = message,
-                                FilesChanges = changes,
-                                Insertions = insertions,
-                                Deletions = deletions
-                            });
-                            headerFound = false;
-                        }
-                    }
+                    Commit lastCommit = commits.Last();
+                    lastCommit.FilesChanges = footerDto.FilesChanges;
+                    lastCommit.Insertions = footerDto.Insertions;
+                    lastCommit.Deletions = footerDto.Deletions;
                 }
             }
             return commits.ToArray();

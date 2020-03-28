@@ -65,7 +65,5 @@ namespace GitStat.Persistence
         }
         public void DeleteDatabase() => _dbContext.Database.EnsureDeleted();
         public void MigrateDatabase() => _dbContext.Database.Migrate();
-
-
     }
 }

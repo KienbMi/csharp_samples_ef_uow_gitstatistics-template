@@ -28,7 +28,7 @@ namespace GitStat.ImportConsole
                 throw new Exception("File does not exist");
             }
 
-            string[] lines = File.ReadAllLines(filePath);
+            string[] lines = File.ReadAllLines(filePath, Encoding.UTF8);
             HeaderDto headerDto = null;
             FooterDto footerDto = null;
 
